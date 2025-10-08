@@ -1,82 +1,78 @@
 pipeline {
-    agent any
+agent any
 
-    environment {
-        // Tag will be dynamically passed into the docker-compose.yml file during deployment
-        DOCKER_IMAGE_NAME = 'swarm-app'
-        DOCKER_REGISTRY   = 'shrikantdayma' // Your Docker Hub username
-        IMAGE_TAG         = "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
-        STACK_NAME        = 'app-stack'
+environment {
+    // Use the current build number as the image tag
+    TAG = env.BUILD_NUMBER
+    DOCKERHUB_USERNAME = 'shrikantdayma'
+    DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
+    APP_NAME = 'swarm-app'
+}
+
+stages {
+    stage('Declarative: Checkout SCM') {
+        steps {
+            checkout scm
+        }
     }
 
-    stages {
-        stage('Preparation & Verification') {
-            steps {
-                echo "Starting Swarm CI/CD pipeline..."
-                sh "ls -R \$WORKSPACE" 
-            }
+    stage('Preparation & Verification') {
+        steps {
+            echo "Starting Swarm CI/CD pipeline..."
+            sh 'ls -R'
         }
-        
-        stage('Install & Test') {
-            steps {
-                echo 'Installing dependencies and running tests directly on Agent shell.'
-                // Relies on nodejs/npm being installed on the Jenkins agent
-                sh 'npm install'
-                sh 'npm test || true'
-            }
+    }
+
+    stage('Install & Test') {
+        steps {
+            echo "Installing dependencies and running tests directly on Agent shell."
+            sh 'npm install'
+            sh 'npm test'
         }
+    }
 
-        stage('Build Docker Image') {
-            steps {
-                echo "Building Docker image: ${IMAGE_TAG}"
-                sh "docker build -t ${IMAGE_TAG} ."
-            }
+    stage('Build Docker Image') {
+        steps {
+            echo "Building Docker image: ${DOCKERHUB_USERNAME}/${APP_NAME}:${TAG}"
+            sh "docker build -t ${DOCKERHUB_USERNAME}/${APP_NAME}:${TAG} ."
         }
+    }
 
-        stage('Push to Docker Hub') {
-            steps {
-                echo "Pushing image to ${DOCKER_REGISTRY}..."
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials', // Reuse your existing credentials ID
-                    usernameVariable: 'DOCKER_USR',
-                    passwordVariable: 'DOCKER_PSW')]) {
-                    
-                    sh "echo ${DOCKER_PSW} | docker login -u ${DOCKER_USR} --password-stdin"
-                    sh "docker push ${IMAGE_TAG}"
-                }
-            }
-        }
-
-        stage('Deploy to Docker Swarm') {
-            steps {
-                echo "Deploying stack: ${STACK_NAME} with image ${IMAGE_TAG}"
-                
-                sh '''
-                    # Set the TAG environment variable for envsubst
-                    export TAG="${BUILD_NUMBER}"
-
-                    # Use 'envsubst' to replace the ${TAG} placeholder in docker-compose.yml
-                    # The output is written to a temporary file
-                    envsubst < docker-compose.yml > docker-compose-deploy.yml
-
-                    # Deploy the stack using the generated file. 
-                    docker stack deploy -c docker-compose-deploy.yml --with-registry-auth ${STACK_NAME}
-                '''
-                echo "Deployment complete. Swarm service is running on port 8081."
+    stage('Push to Docker Hub') {
+        steps {
+            echo "Pushing image to ${DOCKERHUB_USERNAME}..."
+            withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS}", passwordVariable: 'DOCKER_PSW', usernameVariable: 'DOCKER_USER')]) {
+                sh """
+                    echo $DOCKER_PSW | docker login -u $DOCKER_USER --password-stdin
+                    docker push ${DOCKERHUB_USERNAME}/${APP_NAME}:${TAG}
+                """
             }
         }
     }
 
-    post {
-        always {
-            echo "Pipeline finished. Build status: ${currentBuild.result}"
-        }
-        success {
-            echo '✅ Swarm deployment successful! App is running as a service on port 8081.'
-        }
-        failure {
-            echo '❌ Deployment FAILED. Check console log for errors.'
+    stage('Deploy to Docker Swarm') {
+        steps {
+            echo "Deploying stack: app-stack with image ${DOCKERHUB_USERNAME}/${APP_NAME}:${TAG}"
+            // FIX: This command pipes the substituted content directly to Docker deploy.
+            sh """
+                export TAG=${TAG}
+                envsubst < docker-compose-deploy.yml | docker stack deploy -c - --with-registry-auth app-stack
+            """
         }
     }
 }
 
+post {
+    always {
+        echo "Pipeline finished. Build status: ${currentBuild.result}"
+        script {
+            if (currentBuild.result == 'SUCCESS') {
+                echo "✅ Deployment SUCCESSFUL. View your application on port 8081."
+            } else {
+                echo "❌ Deployment FAILED. Check console log for errors."
+            }
+        }
+    }
+}
+
+}
