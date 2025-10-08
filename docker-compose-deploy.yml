@@ -1,15 +1,11 @@
 version: '3.8'
-
 services:
 app:
 image: shrikantdayma/swarm-app:${TAG}
-# Defines the exposed port and map it to the host machine's port 8081
 ports:
 - "8081:3000"
-# Defines the persistent volume mount
 volumes:
 - visits_data:/app/data
-# Use deployment constraints for Swarm
 deploy:
 replicas: 2
 restart_policy:
@@ -17,4 +13,3 @@ condition: on-failure
 volumes:
 visits_data:
 driver: local
-EOF
