@@ -1,0 +1,36 @@
+version: '3.7'
+
+services:
+app:
+# IMPORTANT: The image tag is dynamically injected by the Jenkins pipeline
+image: shrikantdayma/swarm-app:${TAG}
+
+# Deployment configuration for Docker Swarm
+deploy:
+  service_name: swarm-app-service
+  mode: replicated
+  replicas: 2 # Run two instances for redundancy and load balancing
+  resources:
+    limits:
+      memory: 128M
+  update_config:
+      parallelism: 1
+      delay: 10s
+      order: start-first # Zero downtime rolling updates
+  restart_policy:
+    condition: on-failure
+
+# Map the container port 3000 to the Swarm routing mesh port 8081
+ports:
+  - "8081:3000"
+
+# Define the volume and mount point for persistent data
+volumes:
+  # Use the named volume 'app_data' and mount it to /data inside the container.
+  # The count file will be written here.
+  - app_data:/data
+
+Define the named volumes that Docker Swarm will manage
+volumes:
+app_data:
+driver: local
