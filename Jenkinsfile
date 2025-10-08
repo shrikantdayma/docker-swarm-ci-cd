@@ -3,7 +3,7 @@ agent any
 
 environment {
     // Use the current build number as the image tag
-    TAG = env.BUILD_NUMBER
+    TAG = "${env.BUILD_NUMBER}"
     DOCKERHUB_USERNAME = 'shrikantdayma'
     DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
     APP_NAME = 'swarm-app'
